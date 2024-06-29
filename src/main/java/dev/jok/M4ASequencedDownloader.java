@@ -80,6 +80,7 @@ public class M4ASequencedDownloader {
         String[] directories = Arrays.stream(args).skip(1).toArray(String[]::new);
 
         for (String directory : directories) {
+            System.out.println();
             System.out.println("Merging: " + directory);
 
             // combine all the files in the audio and video directories
@@ -89,8 +90,8 @@ public class M4ASequencedDownloader {
             // merge audio
             String audioOutput = directory + "/audio.m4a";
             String videoOutput = directory + "/video.mp4";
-            mergeFiles(audioDir, audioOutput);
-            mergeFiles(videoDir, videoOutput);
+            mergeFiles(audioDir, audioOutput, "audio");
+            mergeFiles(videoDir, videoOutput, "video");
 
             System.out.println("Running ffmpeg to combine audio and video");
 
@@ -112,7 +113,7 @@ public class M4ASequencedDownloader {
 
     }
 
-    private static void mergeFiles(String dirPath, String outputFileName) {
+    private static void mergeFiles(String dirPath, String outputFileName, String contentType) {
         File[] files = new File(dirPath).listFiles();
         if (files == null) {
             System.out.println("No files found in: " + dirPath);
@@ -129,8 +130,27 @@ public class M4ASequencedDownloader {
         try (BufferedOutputStream fos = new BufferedOutputStream(new FileOutputStream(outputFileName), 1024 * 1024 * 512)) {
             // 8mb buffer
             byte[] buffer = new byte[1024 * 1024 * 8];
-            writeFileToStream(initFile, fos, buffer);
 
+            // sort by file name
+            Arrays.sort(files, (f1, f2) -> {
+                // init file should always be first
+                if (f1.getName().equals("init.m4s")) {
+                    return -1;
+                } else if (f2.getName().equals("init.m4s")) {
+                    return 1;
+                }
+
+                // sort by segment id number
+                int n1 = Integer.parseInt(f1.getName().replace(".m4s", ""));
+                int n2 = Integer.parseInt(f2.getName().replace(".m4s", ""));
+                return Integer.compare(n1, n2);
+            });
+
+            System.out.println();
+            System.out.println("Merging " + files.length + " " + contentType + " files");
+
+            int done = 0;
+            int lastPercent = -1;
             for (File file : files) {
                 String fileName = file.getName();
                 if (!fileName.endsWith("m4s") || fileName.equals("init.m4s")) {
@@ -138,6 +158,12 @@ public class M4ASequencedDownloader {
                 }
 
                 writeFileToStream(file, fos, buffer);
+
+                int percent = (int) (((double) ++done / files.length) * 100);
+                if (percent != lastPercent) {
+                    System.out.println("Merged " + done + " files (" + percent + "%)");
+                    lastPercent = percent;
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
