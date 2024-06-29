@@ -27,13 +27,17 @@ public class M4ASequencedDownloader {
     }
 
     private static void download(String[] args) {
-        if (args.length <= 3) {
+        if (args.length <= 2) {
             System.out.println("Usage: java mpd-downloader.jar download <mpd-url> <output-dir>");
             return;
         }
 
-        String mpdUrl = args[0];
-        String outputDir = args[1] + "/";
+        String mpdUrl = args[1];
+        String outputDir = args[2];
+
+        if (!outputDir.endsWith("/")) {
+            outputDir += "/";
+        }
 
         // make directories
         new java.io.File(outputDir + "audio/").mkdirs();
@@ -47,12 +51,13 @@ public class M4ASequencedDownloader {
             return;
         }
 
+        String finalOutputDir = outputDir;
 
         if (audioInfo != null) {
             System.out.println("Audio bandwidth: " + audioInfo.bandwidth);
             new Thread(() -> {
                 try {
-                    downloadSegments(audioInfo, outputDir + "audio/");
+                    downloadSegments(audioInfo, finalOutputDir + "audio/");
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -63,7 +68,7 @@ public class M4ASequencedDownloader {
             System.out.println("Video bandwidth: " + videoInfo.width + "x" + videoInfo.height + ", " + videoInfo.bandwidth);
             new Thread(() -> {
                 try {
-                    downloadSegments(videoInfo, outputDir + "video/");
+                    downloadSegments(videoInfo, finalOutputDir + "video/");
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -120,16 +125,12 @@ public class M4ASequencedDownloader {
             return;
         }
 
-        // start with init.m4s
-        File initFile = new File(dirPath + "init.m4s");
-        if (!initFile.exists()) {
-            System.out.println("init.m4s not found in: " + dirPath);
-            return;
-        }
-
         try (BufferedOutputStream fos = new BufferedOutputStream(new FileOutputStream(outputFileName), 1024 * 1024 * 512)) {
             // 8mb buffer
             byte[] buffer = new byte[1024 * 1024 * 8];
+
+            // filter out non .m4s files
+            files = Arrays.stream(files).filter(f -> f.getName().endsWith(".m4s")).toArray(File[]::new);
 
             // sort by file name
             Arrays.sort(files, (f1, f2) -> {
@@ -152,11 +153,6 @@ public class M4ASequencedDownloader {
             int done = 0;
             int lastPercent = -1;
             for (File file : files) {
-                String fileName = file.getName();
-                if (!fileName.endsWith("m4s") || fileName.equals("init.m4s")) {
-                    continue;
-                }
-
                 writeFileToStream(file, fos, buffer);
 
                 int percent = (int) (((double) ++done / files.length) * 100);
